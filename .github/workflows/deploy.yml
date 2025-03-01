@@ -1,0 +1,24 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches:
+      - main  # Запуск при пуше в main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install sshpass
+        run: sudo apt-get install -y sshpass
+
+      - name: Deploy via SSH using password
+        env:
+          SSH_PASSWORD: ${{ secrets.SERVER_PASSWORD }}  # Твой пароль в GitHub Secrets
+        run: |
+          sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+            root@185.43.4.64 "cd /home/frppnsystems/weather_bot/ && git pull origin main"
