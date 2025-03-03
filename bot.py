@@ -8,6 +8,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums.parse_mode import ParseMode
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, BufferedInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.formatting import Text
 from dotenv import load_dotenv
 import requests
 import json
@@ -31,6 +33,8 @@ dp = Dispatcher()
 # Состояния для FSM
 class States(StatesGroup):
     mainmenu = State()
+    delete_notification = State()  # Новое состояние для удаления уведомлений
+    set_notification_time = State()
 
 # Команда /start
 @dp.message(Command('start'))
@@ -215,8 +219,18 @@ async def show_main_menu(user_id):
     await bot.send_message(user_id, "Главное меню:", reply_markup=menu)
 # Команда /notification
 # Функция для отправки уведомления о погоде
-async def send_weather_notification(user_id: int, home_city: str):
+async def send_weather_notification(user_id: int, home_city: str,notification_time:str):
     try:
+        user_info = requests.get(
+            f"{FASTAPI_URL}/get_user_by_id_user/{user_id}",
+            headers=headers
+        ).json()
+
+        greeting = get_greeting(notification_time)
+        name = user_info.get('name', '')
+
+        # Формируем приветствие
+        caption = f"{greeting}{', ' + name if name else ''}!\n\n🌤 Текущий прогноз погоды:\n"
         # Запрос погоды для домашнего города
         weather_response = requests.get(f"{FASTAPI_URL}/weather_query/?id_user={user_id}&city={home_city}", headers=headers)
         if weather_response.status_code == 200:
@@ -245,7 +259,7 @@ async def send_weather_notification(user_id: int, home_city: str):
                 with open(icon_path, "rb") as icon_file:
                     icon_bytes = icon_file.read()
                     icon_input_file = BufferedInputFile(icon_bytes, filename=f"{icon}.png")
-                    await bot.send_photo(user_id, icon_input_file, caption=weather_message, parse_mode=ParseMode.HTML)
+                    await bot.send_photo(user_id, icon_input_file, caption=caption+weather_message, parse_mode=ParseMode.HTML)
             except FileNotFoundError:
                 # Если иконка не найдена, отправляем сообщение без иконки
                 await bot.send_message(user_id, weather_message, parse_mode=ParseMode.HTML)
@@ -256,42 +270,31 @@ async def send_weather_notification(user_id: int, home_city: str):
 
 # Функция для проверки и отправки уведомлений
 
+# Модифицированная функция проверки уведомлений
 async def check_notifications():
     while True:
         now = datetime.now().time().replace(second=0, microsecond=0)
+        current_time_str = now.strftime('%H:%M')
+
         try:
-            logger.info(f"Проверка уведомлений для времени: {now.strftime('%H:%M')}")
+            response = requests.get(
+                f"{FASTAPI_URL}/get_notifications_by_time/?notification_time={current_time_str}",
+                headers=headers
+            )
 
-            # Получаем список пользователей, у которых есть уведомления на текущее время
-            response = requests.get(f"{FASTAPI_URL}/get_notifications_by_time/?notification_time={now.strftime('%H:%M')}",
-                                    headers=headers)
-
-            logger.info(f"Ответ от API: {response.status_code} - {response.text}")
-
-            # Проверяем статус ответа
             if response.status_code == 200:
-                notifications = response.json()  # Преобразуем JSON-ответ в Python-объект
-                logger.info(f"Уведомления: {notifications}")
+                notifications = response.json()
+                for notification in notifications:
+                    await send_weather_notification(
+                        notification['id_user_tg'],
+                        notification['home_city'],
+                        current_time_str
+                    )
 
-                # Проверяем, что notifications является списком
-                if isinstance(notifications, list):
-                    for notification in notifications:
-                        user_id = notification.get('id_user_tg')
-                        home_city = notification.get('home_city')
-
-                        if user_id and home_city:
-                            logger.info(f"Отправка уведомления пользователю {user_id} для города {home_city}")
-                            await send_weather_notification(user_id, home_city)
-                        else:
-                            logger.error(f"Некорректные данные уведомления: {notification}")
-                else:
-                    logger.error(f"Некорректный формат уведомлений: {notifications}")
-            else:
-                logger.error(f"Ошибка при запросе уведомлений: {response.status_code} - {response.text}")
         except Exception as e:
-            logger.error(f"Ошибка при проверке уведомлений: {e}")
+            logger.error(f"Ошибка проверки уведомлений: {str(e)}")
 
-        await asyncio.sleep(60)  # Проверяем каждую минуту
+        await asyncio.sleep(60)
 @dp.message(States.mainmenu, Command('notification'))
 async def set_notification(sms: types.Message, state: FSMContext):
     try:
@@ -331,33 +334,103 @@ async def main():
 
 
 @dp.message(States.mainmenu, Command('delete_notification'))
-async def delete_notification(sms: types.Message, state: FSMContext):
+async def delete_notification_start(sms: types.Message, state: FSMContext):
     try:
         user_data = await state.get_data()
         id_user = user_data['id_user']
 
-        # Получаем время уведомления
-        notification_time = sms.text.split()[1]
-        try:
-            time_obj = datetime.strptime(notification_time, '%H:%M').time()
-        except ValueError:
-            await bot.send_message(sms.from_user.id, "Неверный формат времени. Используйте формат HH:MM.")
-            return
-
-        # Удаляем время уведомления из базы данных
-        delete_notification_response = requests.delete(
-            f"{FASTAPI_URL}/delete_notification_time/?id_user={id_user}&notification_time={notification_time}",
+        # Получаем список уведомлений через API
+        response = requests.get(
+            f"{FASTAPI_URL}/get_notifications_by_id_user/?id_user={id_user}",
             headers=headers
         )
-        if delete_notification_response.status_code == 200:
-            await bot.send_message(sms.from_user.id, f"Уведомление на {notification_time} удалено.")
-        else:
-            await bot.send_message(sms.from_user.id, "Произошла ошибка при удалении уведомления.")
-    except IndexError:
-        await bot.send_message(sms.from_user.id, "Используйте команду в формате: /delete_notification HH:MM.")
-    except Exception as e:
-        await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
 
+        if response.status_code == 200:
+            notifications = response.json()
+            if not notifications:
+                await bot.send_message(sms.from_user.id, "❌ У вас нет активных уведомлений")
+                return
+
+            # Создаем кнопки с временами уведомлений
+            times = [n['notification_time'][:5] for n in notifications]  # Обрезаем секунды если есть
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=time, callback_data=f"delnotif_{time}")]
+                for time in sorted(times)
+            ])
+
+            # Добавляем кнопку отмены
+            keyboard.inline_keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
+
+            msg = await bot.send_message(
+                sms.from_user.id,
+                "🕑 Выберите время уведомления для удаления:",
+                reply_markup=keyboard
+            )
+            await state.update_data(menu_message_id=msg.message_id)
+            await state.set_state(States.delete_notification)
+        else:
+            await bot.send_message(sms.from_user.id, "⚠️ Ошибка при получении уведомлений")
+    except Exception as e:
+        await bot.send_message(sms.from_user.id, f"⚠️ Ошибка: {str(e)}")
+
+
+# Обработчик нажатий на кнопки удаления
+@dp.callback_query(States.delete_notification, Text(startswith="delnotif_"))
+async def delete_notification_handler(callback: types.CallbackQuery, state: FSMContext):
+    try:
+        time_to_delete = callback.data.split("_")[1]
+        user_data = await state.get_data()
+        id_user = user_data['id_user']
+        menu_message_id = user_data.get('menu_message_id')
+
+        # Удаляем уведомление через API
+        response = requests.delete(
+            f"{FASTAPI_URL}/delete_notification_time/?id_user={id_user}&notification_time={time_to_delete}",
+            headers=headers
+        )
+
+        if response.status_code == 200:
+            # Редактируем исходное сообщение
+            await bot.edit_message_text(
+                chat_id=callback.from_user.id,
+                message_id=menu_message_id,
+                text=f"✅ Уведомление на {time_to_delete} успешно удалено"
+            )
+        else:
+            await bot.edit_message_text(
+                chat_id=callback.from_user.id,
+                message_id=menu_message_id,
+                text="⚠️ Не удалось удалить уведомление"
+            )
+
+        await state.set_state(States.mainmenu)
+    except Exception as e:
+        await callback.answer(f"Ошибка: {str(e)}")
+
+
+# Обработчик отмены
+@dp.callback_query(States.delete_notification, Text("cancel"))
+async def cancel_delete_notification(callback: types.CallbackQuery, state: FSMContext):
+    user_data = await state.get_data()
+    await bot.delete_message(
+        chat_id=callback.from_user.id,
+        message_id=user_data.get('menu_message_id')
+    )
+    await state.set_state(States.mainmenu)
+    await callback.answer("❌ Отмена удаления")
+def get_greeting(notification_time: str) -> str:
+    try:
+        hour = int(notification_time.split(":")[0])
+        if 6 <= hour < 11:
+            return "Доброе утро"
+        elif 11 <= hour < 16:
+            return "Добрый день"
+        elif 16 <= hour < 20:
+            return "Добрый вечер"
+        else:
+            return "Доброй ночи"
+    except:
+        return "Доброго времени суток"
 
 @dp.message(States.mainmenu, Command('set_name'))
 async def set_name(sms: types.Message, state: FSMContext):
