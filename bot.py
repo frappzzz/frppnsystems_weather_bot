@@ -360,50 +360,7 @@ async def delete_notification(sms: types.Message, state: FSMContext):
     except Exception as e:
         await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
 
-# Обработчик нажатий на кнопки удаления
-@dp.callback_query(States.delete_notification, Text(startswith="delnotif_"))
-async def delete_notification_handler(callback: types.CallbackQuery, state: FSMContext):
-    try:
-        time_to_delete = callback.data.split("_")[1]
-        user_data = await state.get_data()
-        id_user = user_data['id_user']
-        menu_message_id = user_data.get('menu_message_id')
 
-        # Удаляем уведомление через API
-        response = requests.delete(
-            f"{FASTAPI_URL}/delete_notification_time/?id_user={id_user}&notification_time={time_to_delete}",
-            headers=headers
-        )
-
-        if response.status_code == 200:
-            # Редактируем исходное сообщение
-            await bot.edit_message_text(
-                chat_id=callback.from_user.id,
-                message_id=menu_message_id,
-                text=f"✅ Уведомление на {time_to_delete} успешно удалено"
-            )
-        else:
-            await bot.edit_message_text(
-                chat_id=callback.from_user.id,
-                message_id=menu_message_id,
-                text="⚠️ Не удалось удалить уведомление"
-            )
-
-        await state.set_state(States.mainmenu)
-    except Exception as e:
-        await callback.answer(f"Ошибка: {str(e)}")
-
-
-# Обработчик отмены
-@dp.callback_query(States.delete_notification, Text("cancel"))
-async def cancel_delete_notification(callback: types.CallbackQuery, state: FSMContext):
-    user_data = await state.get_data()
-    await bot.delete_message(
-        chat_id=callback.from_user.id,
-        message_id=user_data.get('menu_message_id')
-    )
-    await state.set_state(States.mainmenu)
-    await callback.answer("❌ Отмена удаления")
 def get_greeting(notification_time: str) -> str:
     try:
         hour = int(notification_time.split(":")[0])
