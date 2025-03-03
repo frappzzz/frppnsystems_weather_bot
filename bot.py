@@ -9,7 +9,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums.parse_mode import ParseMode
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, BufferedInputFile
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.utils.formatting import Text
 from dotenv import load_dotenv
 import requests
 import json
@@ -334,45 +333,32 @@ async def main():
 
 
 @dp.message(States.mainmenu, Command('delete_notification'))
-async def delete_notification_start(sms: types.Message, state: FSMContext):
+async def delete_notification(sms: types.Message, state: FSMContext):
     try:
         user_data = await state.get_data()
         id_user = user_data['id_user']
 
-        # Получаем список уведомлений через API
-        response = requests.get(
-            f"{FASTAPI_URL}/get_notifications_by_id_user/?id_user={id_user}",
+        # Получаем время уведомления
+        notification_time = sms.text.split()[1]
+        try:
+            time_obj = datetime.strptime(notification_time, '%H:%M').time()
+        except ValueError:
+            await bot.send_message(sms.from_user.id, "Неверный формат времени. Используйте формат HH:MM.")
+            return
+
+        # Удаляем время уведомления из базы данных
+        delete_notification_response = requests.delete(
+            f"{FASTAPI_URL}/delete_notification_time/?id_user={id_user}&notification_time={notification_time}",
             headers=headers
         )
-
-        if response.status_code == 200:
-            notifications = response.json()
-            if not notifications:
-                await bot.send_message(sms.from_user.id, "❌ У вас нет активных уведомлений")
-                return
-
-            # Создаем кнопки с временами уведомлений
-            times = [n['notification_time'][:5] for n in notifications]  # Обрезаем секунды если есть
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=time, callback_data=f"delnotif_{time}")]
-                for time in sorted(times)
-            ])
-
-            # Добавляем кнопку отмены
-            keyboard.inline_keyboard.append([InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")])
-
-            msg = await bot.send_message(
-                sms.from_user.id,
-                "🕑 Выберите время уведомления для удаления:",
-                reply_markup=keyboard
-            )
-            await state.update_data(menu_message_id=msg.message_id)
-            await state.set_state(States.delete_notification)
+        if delete_notification_response.status_code == 200:
+            await bot.send_message(sms.from_user.id, f"Уведомление на {notification_time} удалено.")
         else:
-            await bot.send_message(sms.from_user.id, "⚠️ Ошибка при получении уведомлений")
+            await bot.send_message(sms.from_user.id, "Произошла ошибка при удалении уведомления.")
+    except IndexError:
+        await bot.send_message(sms.from_user.id, "Используйте команду в формате: /delete_notification HH:MM.")
     except Exception as e:
-        await bot.send_message(sms.from_user.id, f"⚠️ Ошибка: {str(e)}")
-
+        await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
 
 # Обработчик нажатий на кнопки удаления
 @dp.callback_query(States.delete_notification, Text(startswith="delnotif_"))
