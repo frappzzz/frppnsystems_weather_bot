@@ -218,21 +218,21 @@ async def show_main_menu(user_id):
     await bot.send_message(user_id, "Главное меню:", reply_markup=menu)
 # Команда /notification
 # Функция для отправки уведомления о погоде
-async def send_weather_notification(user_id: int, home_city: str,notification_time:str):
+async def send_weather_notification(id_user_tg: int,id_user: int, home_city: str,notification_time:str):
     try:
         user_info = requests.get(
-            f"{FASTAPI_URL}/get_user_by_id_user/{user_id}",
+            f"{FASTAPI_URL}/get_user_by_id_user/{id_user}",
             headers=headers
         ).json()
-
+        print(user_info)
         greeting = get_greeting(notification_time)
         name = user_info.get('name')
-
+        print(name)
 
         # Формируем приветствие
         caption = f"{greeting}{', ' + name if name else ''}!\n\n🌤 Текущий прогноз погоды:\n"
         # Запрос погоды для домашнего города
-        weather_response = requests.get(f"{FASTAPI_URL}/weather_query/?id_user={user_id}&city={home_city}", headers=headers)
+        weather_response = requests.get(f"{FASTAPI_URL}/weather_query/?id_user={id_user}&city={home_city}", headers=headers)
         if weather_response.status_code == 200:
             weather_data = weather_response.json()
             weather_message = (
@@ -259,14 +259,14 @@ async def send_weather_notification(user_id: int, home_city: str,notification_ti
                 with open(icon_path, "rb") as icon_file:
                     icon_bytes = icon_file.read()
                     icon_input_file = BufferedInputFile(icon_bytes, filename=f"{icon}.png")
-                    await bot.send_photo(user_id, icon_input_file, caption=caption+weather_message, parse_mode=ParseMode.HTML)
+                    await bot.send_photo(id_user_tg, icon_input_file, caption=caption+weather_message, parse_mode=ParseMode.HTML)
             except FileNotFoundError:
                 # Если иконка не найдена, отправляем сообщение без иконки
-                await bot.send_message(user_id, weather_message, parse_mode=ParseMode.HTML)
+                await bot.send_message(id_user_tg, weather_message, parse_mode=ParseMode.HTML)
         else:
-            await bot.send_message(user_id, "Не удалось получить данные о погоде.")
+            await bot.send_message(id_user_tg, "Не удалось получить данные о погоде.")
     except Exception as e:
-        await bot.send_message(user_id, f"Произошла ошибка: {e}")
+        await bot.send_message(id_user_tg, f"Произошла ошибка: {e}")
 
 # Функция для проверки и отправки уведомлений
 
@@ -287,6 +287,7 @@ async def check_notifications():
                 for notification in notifications:
                     await send_weather_notification(
                         notification['id_user_tg'],
+                        notification['id_user'],
                         notification['home_city'],
                         current_time_str
                     )
