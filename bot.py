@@ -36,7 +36,7 @@ class States(StatesGroup):
     set_notification_time = State()
 
 # Команда /start
-@dp.message(Command('start'))
+@dp.message(StateFilter(None),Command('start'))
 async def starting(sms: types.Message, state: FSMContext):
     try:
         # Проверяем, авторизован ли пользователь
