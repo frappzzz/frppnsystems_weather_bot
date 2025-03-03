@@ -209,7 +209,8 @@ async def get_history(sms: types.Message, state: FSMContext):
 async def show_main_menu(user_id):
     menu = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="/weather"), KeyboardButton(text="/history")],
-        [KeyboardButton(text="/set_home_city"),KeyboardButton(text="/notification")]
+        [KeyboardButton(text="/set_home_city"), KeyboardButton(text="/set_name")],
+        [KeyboardButton(text="/notification"), KeyboardButton(text="/delete_notification")]
     ], resize_keyboard=True)
     await bot.send_message(user_id, "Главное меню:", reply_markup=menu)
 # Команда /notification
@@ -328,6 +329,61 @@ async def main():
     asyncio.create_task(check_notifications())  # Запуск фоновой задачи
     await dp.start_polling(bot)
 
+
+@dp.message(States.mainmenu, Command('delete_notification'))
+async def delete_notification(sms: types.Message, state: FSMContext):
+    try:
+        user_data = await state.get_data()
+        id_user = user_data['id_user']
+
+        # Получаем время уведомления
+        notification_time = sms.text.split()[1]
+        try:
+            time_obj = datetime.strptime(notification_time, '%H:%M').time()
+        except ValueError:
+            await bot.send_message(sms.from_user.id, "Неверный формат времени. Используйте формат HH:MM.")
+            return
+
+        # Удаляем время уведомления из базы данных
+        delete_notification_response = requests.delete(
+            f"{FASTAPI_URL}/delete_notification_time/?id_user={id_user}&notification_time={notification_time}",
+            headers=headers
+        )
+        if delete_notification_response.status_code == 200:
+            await bot.send_message(sms.from_user.id, f"Уведомление на {notification_time} удалено.")
+        else:
+            await bot.send_message(sms.from_user.id, "Произошла ошибка при удалении уведомления.")
+    except IndexError:
+        await bot.send_message(sms.from_user.id, "Используйте команду в формате: /delete_notification HH:MM.")
+    except Exception as e:
+        await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
+
+
+@dp.message(States.mainmenu, Command('set_name'))
+async def set_name(sms: types.Message, state: FSMContext):
+    try:
+        user_data = await state.get_data()
+        id_user = user_data['id_user']
+
+        # Получаем имя пользователя
+        name = ' '.join(sms.text.split()[1:])
+        if not name:
+            await bot.send_message(sms.from_user.id, "Пожалуйста, укажите имя.")
+            return
+
+        # Устанавливаем имя пользователя
+        set_name_response = requests.post(
+            f"{FASTAPI_URL}/set_user_name/?id_user={id_user}&user_name={name}",
+            headers=headers
+        )
+        if set_name_response.status_code == 200:
+            await bot.send_message(sms.from_user.id, f"Имя успешно установлено: {name}.")
+        else:
+            await bot.send_message(sms.from_user.id, "Произошла ошибка при установке имени.")
+    except IndexError:
+        await bot.send_message(sms.from_user.id, "Используйте команду в формате: /set_name Имя.")
+    except Exception as e:
+        await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     asyncio.run(main())
