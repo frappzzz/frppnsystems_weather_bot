@@ -226,7 +226,8 @@ async def send_weather_notification(user_id: int, home_city: str,notification_ti
         ).json()
 
         greeting = get_greeting(notification_time)
-        name = user_info.get('name', '')
+        name = user_info.get('name')
+
 
         # Формируем приветствие
         caption = f"{greeting}{', ' + name if name else ''}!\n\n🌤 Текущий прогноз погоды:\n"
