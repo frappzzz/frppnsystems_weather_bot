@@ -213,7 +213,8 @@ async def show_main_menu(user_id):
     menu = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="/weather"), KeyboardButton(text="/history")],
         [KeyboardButton(text="/set_home_city"), KeyboardButton(text="/set_name")],
-        [KeyboardButton(text="/notification"), KeyboardButton(text="/delete_notification")]
+        [KeyboardButton(text="/notification"), KeyboardButton(text="/delete_notification")],
+        [KeyboardButton(text="/my_notifications")]  # Новая кнопка
     ], resize_keyboard=True)
     await bot.send_message(user_id, "Главное меню:", reply_markup=menu)
 # Команда /notification
@@ -400,6 +401,36 @@ async def set_name(sms: types.Message, state: FSMContext):
             await bot.send_message(sms.from_user.id, "Произошла ошибка при установке имени.")
     except IndexError:
         await bot.send_message(sms.from_user.id, "Используйте команду в формате: /set_name Имя.")
+    except Exception as e:
+        await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
+@dp.message(States.mainmenu, Command('my_notifications'))
+async def get_my_notifications(sms: types.Message, state: FSMContext):
+    try:
+        user_data = await state.get_data()
+        id_user = user_data['id_user']
+
+        # Получаем список уведомлений через API
+        response = requests.get(
+            f"{FASTAPI_URL}/get_notifications_by_id_user/?id_user={id_user}",
+            headers=headers
+        )
+
+        if response.status_code == 200:
+            notifications = response.json()
+            if notifications:
+                # Формируем сообщение с уведомлениями
+                message = ""
+                for notification in notifications:
+                    time_str = notification['notification_time'][:5]  # Обрезаем секунды
+                    message += (
+                        f"Время: {time_str}\n"
+                        f"Тип: {notification['notification_type']}\n\n"
+                    )
+                await bot.send_message(sms.from_user.id, message.strip())
+            else:
+                await bot.send_message(sms.from_user.id, "У вас нет активных уведомлений.")
+        else:
+            await bot.send_message(sms.from_user.id, "Произошла ошибка при получении уведомлений.")
     except Exception as e:
         await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
 if __name__ == '__main__':
