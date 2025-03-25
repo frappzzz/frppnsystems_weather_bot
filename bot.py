@@ -218,7 +218,6 @@ async def show_main_menu(user_id):
     ], resize_keyboard=True)
     await bot.send_message(user_id, "Главное меню:", reply_markup=menu)
 # Команда /notification
-
 # Функция для отправки уведомления о погоде
 async def send_weather_notification(id_user_tg: int,id_user: int, home_city: str,notification_time:str):
     try:
