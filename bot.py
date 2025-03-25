@@ -130,7 +130,6 @@ async def get_weather(sms: types.Message, state: FSMContext):
             await bot.send_message(sms.from_user.id, "Не удалось получить данные о погоде.")
     except Exception as e:
         await bot.send_message(sms.from_user.id, f"Произошла ошибка: {e}")
-
 # Команда /set_home_city
 @dp.message(States.mainmenu, Command('set_home_city'))
 async def set_home_city(sms: types.Message, state: FSMContext):
