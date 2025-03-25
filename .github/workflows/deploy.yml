@@ -21,10 +21,10 @@ jobs:
           SSH_PASSWORD: ${{ secrets.SERVER_PASSWORD }}  # Твой пароль в GitHub Secrets
         run: |
           sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            root@185.43.4.64 "cd /home/frppnsystems/api/ && git pull origin main"
+            root@185.43.4.64 "cd /home/frppnsystems/weather_bot/ && git pull origin main"
       - name: reboot service
         env:
           SSH_PASSWORD: ${{ secrets.SERVER_PASSWORD }}  # Твой пароль в GitHub Secrets
         run: |
           sshpass -p "$SSH_PASSWORD" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-            root@185.43.4.64 "sudo systemctl restart frppnsystems_api.service"
+            root@185.43.4.64 "sudo systemctl restart frppnsystems_weather_bot.service"
