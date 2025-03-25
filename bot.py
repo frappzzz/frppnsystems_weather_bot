@@ -208,7 +208,7 @@ async def get_history(sms: types.Message, state: FSMContext):
             await bot.send_message(sms.from_user.id, "Произошла ошибка.")
     except Exception as e:
         await bot.send_message(sms.from_user.id, "Произошла ошибка.")
-# Функция для отображения главного меню
+# Функция для отображения главного менюf
 async def show_main_menu(user_id):
     menu = ReplyKeyboardMarkup(keyboard=[
         [KeyboardButton(text="/weather"), KeyboardButton(text="/history")],
